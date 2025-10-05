@@ -1,27 +1,78 @@
+// src/components/HeroSection.jsx
+import { Container, Stack, Heading, Text, Button, HStack, Box, Link } from "@chakra-ui/react";
 import { motion } from "framer-motion";
+
+const MotionStack = motion(Stack);
+const MotionHeading = motion(Heading);
 
 export default function HeroSection() {
   return (
-    <section className="flex flex-col items-center justify-center text-center mt-10 text-white px-4">
-      <motion.h2 
-        initial={{ opacity: 0, y: -30 }} 
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 1 }}
-        className="text-5xl font-extrabold mb-4"
-      >
-        "Defend Earth!"
-      </motion.h2>
-      <p className="max-w-xl text-gray-300 mb-6">
-        Watch asteroids, run simulations, and save our planet from potential impact zones.
-      </p>
-      <div className="flex gap-6">
-        <button className="bg-blue-600 hover:bg-blue-500 px-8 py-3 rounded-lg text-lg font-bold shadow-lg hover:shadow-blue-400/50 transition-all">
-          Simulate
-        </button>
-        <button className="border border-blue-400 hover:bg-blue-500 hover:text-black px-8 py-3 rounded-lg text-lg font-bold transition-all">
-          Demo
-        </button>
-      </div>
-    </section>
+    <Box as="section" bg="transparent" color="white">
+      {/* same margins as Navbar */}
+      <Container maxW="7xl" px={6}>
+        {/* fill page below the navbar */}
+        <MotionStack
+          minH="calc(100vh - 96px)"   // adjust if your navbar height changes
+          align="center"
+          justify="center"
+          textAlign="center"
+          spacing={6}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.9 }}
+        >
+          {/* Headline */}
+          <MotionHeading
+            as="h1"
+            size="2xl"
+            fontWeight="extrabold"
+            letterSpacing="wider"
+            initial={{ opacity: 0, y: -20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.9 }}
+          >
+            “Defend Earth!”
+          </MotionHeading>
+
+          {/* Accent underline (per wireframe) */}
+          <Box h="2px" w={{ base: "120px", md: "180px" }} bg="cyan.400" opacity={0.7} />
+
+          {/* Subhead */}
+          <Text maxW="xl" color="whiteAlpha.800" fontSize={{ base: "md", md: "lg" }}>
+            Watch asteroids, run simulations, and save our planet from potential impact zones.
+          </Text>
+
+          {/* CTAs */}
+          <HStack spacing={6} pt={2}>
+            <Button
+              as={Link}
+              href="/simulate"
+              size="lg"
+              px={8}
+              py={6}
+              fontWeight="bold"
+              colorScheme="blue"
+              shadow="xl"
+            >
+              Simulate
+            </Button>
+
+            <Button
+              as={Link}
+              href="/demo"
+              size="lg"
+              px={8}
+              py={6}
+              fontWeight="bold"
+              variant="outline"
+              borderColor="blue.300"
+              _hover={{ bg: "blue.500", color: "black" }}
+            >
+              Demo
+            </Button>
+          </HStack>
+        </MotionStack>
+      </Container>
+    </Box>
   );
 }
