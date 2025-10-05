@@ -256,7 +256,6 @@ function MitigationScreen() {
                                                         : "Safe Orbit"}
                                                 </Badge>
                                                 <VStack align="start" spacing={2} fontSize="sm" color="whiteAlpha.800">
-                                                    <Text><b>Magnitude:</b> {selectedAsteroid.absolute_magnitude_h}</Text>
                                                     <Text>
                                                         <b>Diameter:</b>{" "}
                                                         {selectedAsteroid.estimated_diameter.meters.estimated_diameter_min.toFixed(2)} -{" "}

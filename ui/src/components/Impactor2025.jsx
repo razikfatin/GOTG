@@ -125,7 +125,7 @@ export default function Impactor2025() {
             letterSpacing="wide"
             textAlign="center"
           >
-            Impactor-2025
+            (2021 SZ4)
           </Heading>
           <Box
             as="span"

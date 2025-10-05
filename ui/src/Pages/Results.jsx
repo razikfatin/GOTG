@@ -1,10 +1,11 @@
-import React, { useEffect, useRef, useMemo } from "react";
-import { Box, Heading, Text, SimpleGrid } from "@chakra-ui/react";
+import React, { useEffect, useRef, useMemo, useState } from "react";
+import { Box, Heading, Text, SimpleGrid, Spinner } from "@chakra-ui/react";
 import ImpactZoneMap from "../components/ImpactZoneMap";
 import * as d3 from "d3";
 import { feature } from "topojson-client";
+import ApiService from "../components/utils/ApiService";
 
-// ---------- D3 Globe (inline component) ----------
+// ---------- D3 Globe Component ----------
 function GlobeD3({ zones, colorByType }) {
   const ref = useRef(null);
 
@@ -12,37 +13,32 @@ function GlobeD3({ zones, colorByType }) {
     const svg = d3.select(ref.current);
     svg.selectAll("*").remove();
 
-    // Sizing
-    const size = 420; // canvas size in px (square)
+    const size = 420;
     svg.attr("viewBox", `0 0 ${size} ${size}`).style("width", "100%");
 
-    // Groups
     const gRoot = svg.append("g");
     const gOcean = gRoot.append("g");
     const gLand = gRoot.append("g");
     const gGraticule = gRoot.append("g");
-    const gClipped = gRoot.append("g"); // everything clipped to the sphere
+    const gClipped = gRoot.append("g");
     const gPoints = gClipped.append("g");
 
-    // Projection / path
     const projection = d3
       .geoOrthographic()
       .translate([size / 2, size / 2])
       .scale(size * 0.46)
-      .clipAngle(90) // clip back hemisphere
-      .rotate([0, -20]); // a little tilt
+      .clipAngle(90)
+      .rotate([0, -20]);
 
     const path = d3.geoPath(projection);
     const graticule = d3.geoGraticule10();
 
-    // Ocean (the sphere)
     gOcean
       .append("path")
       .datum({ type: "Sphere" })
       .attr("d", path)
-      .attr("fill", "#3A86FF"); // brighter ocean blue
+      .attr("fill", "#3A86FF");
 
-    // Clip path so points/land don’t draw outside the sphere
     const clipId = "globe-clip";
     svg
       .append("defs")
@@ -54,7 +50,6 @@ function GlobeD3({ zones, colorByType }) {
 
     gClipped.attr("clip-path", `url(#${clipId})`);
 
-    // Graticule
     gGraticule
       .append("path")
       .datum(graticule)
@@ -64,36 +59,30 @@ function GlobeD3({ zones, colorByType }) {
       .attr("stroke-opacity", 0.8)
       .attr("stroke-width", 0.6);
 
-    // Fetch and draw land (countries)
     const worldUrl =
       "https://cdn.jsdelivr.net/npm/world-atlas@2/countries-110m.json";
 
-    let lambda = 0; // current rotation around Y
-    let phi = -20;  // current tilt
-    const spinSpeed = 0.015; // degrees per ms
-    let spinning;  // d3.timer
+    let lambda = 0;
+    let phi = -20;
+    const spinSpeed = 0.015;
+    let spinning;
 
     const redraw = (landGeo) => {
-      // Update ocean + clip path
       svg.select(`#${clipId} path`).attr("d", path);
       gOcean.select("path").attr("d", path);
       gGraticule.select("path").attr("d", path);
 
-      // Land
       if (landGeo) {
         const landSel = gClipped.selectAll("path.land").data(landGeo.features);
         landSel
           .join("path")
           .attr("class", "land")
           .attr("d", path)
-          .attr("fill", "#5DBB63") // bright greenish-blue for land
+          .attr("fill", "#5DBB63")
           .attr("stroke", "#3A506B")
           .attr("stroke-width", 0.5);
-      } else {
-        gClipped.selectAll("path.land").attr("d", path);
       }
 
-      // Points
       const pts = gPoints.selectAll("circle.zone").data(zones, (d) => d.id);
       pts
         .join(
@@ -101,7 +90,7 @@ function GlobeD3({ zones, colorByType }) {
             enter
               .append("circle")
               .attr("class", "zone")
-              .attr("r", (d) => 2 + Math.max(0, (d.scale || 0) - 4)) // size ~ scale
+              .attr("r", (d) => 2 + Math.max(0, (d.scale || 0) - 4))
               .attr("fill", (d) => colorByType(d.type))
               .attr("stroke", "white")
               .attr("stroke-width", 0.6)
@@ -120,20 +109,20 @@ function GlobeD3({ zones, colorByType }) {
 
     const startSpin = (landGeo) => {
       stopSpin();
-      spinning = d3.timer((elapsed) => {
+      spinning = d3.timer(() => {
         lambda = (lambda + spinSpeed) % 360;
         projection.rotate([lambda, phi]);
         redraw(landGeo);
       });
     };
+
     const stopSpin = () => {
       if (spinning) spinning.stop();
       spinning = null;
     };
 
-    // Drag to rotate
     let last = null;
-    const sensitivity = 0.25; // deg per px
+    const sensitivity = 0.25;
     svg.call(
       d3
         .drag()
@@ -147,17 +136,13 @@ function GlobeD3({ zones, colorByType }) {
           last = [event.x, event.y];
           lambda += dx * sensitivity;
           phi -= dy * sensitivity;
-          phi = Math.max(-89, Math.min(89, phi)); // clamp tilt
+          phi = Math.max(-89, Math.min(89, phi));
           projection.rotate([lambda, phi]);
-          redraw(); // incremental redraw
+          redraw();
         })
-        .on("end", () => {
-          // resume gentle spin
-          startSpin();
-        })
+        .on("end", () => startSpin())
     );
 
-    // Load world + first draw + start spin
     fetch(worldUrl)
       .then((r) => r.json())
       .then((topology) => {
@@ -166,12 +151,10 @@ function GlobeD3({ zones, colorByType }) {
         startSpin(land);
       })
       .catch(() => {
-        // draw without land if fetch fails
         redraw();
         startSpin();
       });
 
-    // Cleanup on unmount
     return () => stopSpin();
   }, [zones, colorByType]);
 
@@ -185,273 +168,251 @@ function GlobeD3({ zones, colorByType }) {
   );
 }
 
-// ---------- Your page ----------
+// ---------- MAIN PAGE ----------
 export default function Results() {
-  // --- USGS-like raw events (exactly as you shared) ---
-  const usgsZones = [
-    {
-      distance_km: 295.71,
-      lat: 50.5853,
-      lon: 157.8643,
-      magnitude: 6.8,
-      place: "123 km E of Severo-Kuril’sk, Russia",
-      title: "M 6.8 - 123 km E of Severo-Kuril’sk, Russia",
-      tsunami: 1,
-      url: "https://earthquake.usgs.gov/earthquakes/eventpage/us6000qxt4",
-    },
-    {
-      distance_km: 376.83,
-      lat: 53.4952,
-      lon: 153.8486,
-      magnitude: 4.3,
-      place: "286 km NW of Ozernovskiy, Russia",
-      title: "M 4.3 - 286 km NW of Ozernovskiy, Russia",
-      tsunami: 0,
-      url: "https://earthquake.usgs.gov/earthquakes/eventpage/us6000re60",
-    },
-    {
-      distance_km: 224.35,
-      lat: 54.6313,
-      lon: 161.5996,
-      magnitude: 4.2,
-      place: "165 km SE of Atlasovo, Russia",
-      title: "M 4.2 - 165 km SE of Atlasovo, Russia",
-      tsunami: 0,
-      url: "https://earthquake.usgs.gov/earthquakes/eventpage/us7000qv87",
-    },
-  ];
+  const [zones, setZones] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [impactLoading, setImpactLoading] = useState(true);
+  const [apiResponse, setApiResponse] = useState(null);
+  const [impactData, setImpactData] = useState(null);
 
-  // Normalize ONLY for the globe (ImpactZoneMap already normalizes internally)
-  const globeZones = useMemo(
-    () =>
-      usgsZones.map((z, i) => {
-        const type =
-          z.tsunami && Number(z.tsunami) > 0 ? "tsunami" : "earthquake";
-        return {
-          id: z.id ?? i,
-          latitude: z.lat,
-          longitude: z.lon,
-          scale: z.magnitude ?? null,
-          type,
-          name: z.title ?? z.place ?? `Impact ${i + 1}`,
-          url: z.url,
-          distance_km: z.distance_km,
-          raw: z,
-        };
-      }),
-    [usgsZones]
-  );
+  // Fetch nearby earthquake/tsunami data
+  useEffect(() => {
+    const fetchNearbyEarthquakes = async () => {
+      try {
+        const storedAsteroid = JSON.parse(localStorage.getItem("selectedAsteroid"));
+        if (!storedAsteroid || !storedAsteroid.latlong) return;
 
-  // Centralised colour mapping — SAME colours in both map & globe
-  const colorByType = (t = "") => {
-    switch (t.toLowerCase()) {
-      case "tsunami":
-        return "#3182CE"; // blue
-      case "earthquake":
-        return "#E53E3E"; // red
-      case "volcano":
-        return "#DD6B20"; // orange
-      default:
-        return "#805AD5"; // purple fallback
-    }
-  };
+        const [latString, longString] = storedAsteroid.latlong;
+        const lat = parseFloat(latString);
+        const lon = parseFloat(longString);
 
-  // HUD flags for the map
-  const hasTsunami = useMemo(
-    () => usgsZones.some((z) => Number(z.tsunami) > 0),
-    [usgsZones]
-  );
-  const hasEarthquake = useMemo(
-    () => usgsZones.some((z) => !z.tsunami || Number(z.tsunami) === 0),
-    [usgsZones]
-  );
+        const response = await ApiService.get(`earthquakes/nearby?lat=${lat}&lon=${lon}`);
+        setZones(response);
+        setApiResponse(response);
+        console.log("Nearby earthquake data:", response);
+      } catch (error) {
+        console.error("Error fetching nearby earthquakes:", error);
+      } finally {
+        setLoading(false);
+      }
+    };
 
-  const populationRef = useRef(null);
-  const popSvgRef = useRef(null);
+    fetchNearbyEarthquakes();
+  }, []);
 
   useEffect(() => {
-    const total = 1234567;
-    const affected = 278234.55;
-    const fatalityText = "60% fatalities";
-    const shockText = "Severe structural damage likely";
+    const fetchPopulationImpact = async () => {
+      if (!zones || zones.length === 0) return;
+      setImpactLoading(true);
+      try {
+        const payload = {
+          locations: zones.map((z) => ({
+            lat: z.lat,
+            lon: z.lon,
+          })),
+        };
+        const response = await ApiService.post("get_population_and_impact_multiple", payload);
+        console.log("Population & impact data:", response);
+        setImpactData(response);
+      } catch (error) {
+        console.error("Error fetching population and impact data:", error);
+      } finally {
+        setImpactLoading(false);
+      }
+    };
+    fetchPopulationImpact();
+  }, [zones]);
 
-    const svg = d3.select(popSvgRef.current);
-    svg.selectAll("*").remove();
+  // Normalize for globe
+  const globeZones = useMemo(
+    () =>
+      zones.map((z, i) => ({
+        id: z.id ?? i,
+        latitude: z.lat,
+        longitude: z.lon,
+        scale: z.magnitude,
+        type: z.tsunami ? "tsunami" : "earthquake",
+        name: z.title,
+      })),
+    [zones]
+  );
 
-    const width = 420;
-    const height = 120;
-    const margin = { top: 40, right: 20, bottom: 40, left: 20 };
-
-    const g = svg
-      .attr("width", width)
-      .attr("height", height)
-      .append("g")
-      .attr("transform", `translate(${margin.left},${margin.top})`);
-
-    const percent = affected / total;
-    const barWidth = width - margin.left - margin.right;
-    const barHeight = 30;
-
-    // Base bar for total
-    g.append("rect")
-      .attr("width", barWidth)
-      .attr("height", barHeight)
-      .attr("fill", "#CBD5E0")
-      .attr("rx", 8)
-      .attr("ry", 8);
-
-    // Gradient for affected portion
-    const defs = svg.append("defs");
-    const gradient = defs
-      .append("linearGradient")
-      .attr("id", "barGradient")
-      .attr("x1", "0%")
-      .attr("y1", "0%")
-      .attr("x2", "100%")
-      .attr("y2", "0%");
-    gradient.append("stop").attr("offset", "0%").attr("stop-color", "#E53E3E");
-    gradient.append("stop").attr("offset", "100%").attr("stop-color", "#DD6B20");
-
-    // Animated affected bar
-    const affectedRect = g
-      .append("rect")
-      .attr("width", 0)
-      .attr("height", barHeight)
-      .attr("fill", "url(#barGradient)")
-      .attr("rx", 8)
-      .attr("ry", 8);
-
-    affectedRect
-      .transition()
-      .duration(1200)
-      .ease(d3.easeCubicOut)
-      .attr("width", barWidth * percent);
-
-    // Glow pulse
-    const pulse = g
-      .append("rect")
-      .attr("width", 0)
-      .attr("height", barHeight)
-      .attr("fill", "none")
-      .attr("stroke", "#E53E3E")
-      .attr("stroke-width", 3)
-      .attr("opacity", 0.5)
-      .attr("rx", 8)
-      .attr("ry", 8);
-
-    function repeat() {
-      pulse
-        .attr("width", barWidth * percent)
-        .attr("opacity", 0.5)
-        .transition()
-        .duration(1500)
-        .attr("stroke-width", 1)
-        .attr("opacity", 0)
-        .on("end", repeat);
-    }
-    repeat();
-
-    // Tooltip
-    const tooltip = d3
-      .select(populationRef.current)
-      .append("div")
-      .style("position", "absolute")
-      .style("background", "rgba(0,0,0,0.8)")
-      .style("color", "white")
-      .style("padding", "8px 12px")
-      .style("border-radius", "8px")
-      .style("font-size", "13px")
-      .style("pointer-events", "none")
-      .style("opacity", 0)
-      .style("transition", "opacity 0.3s ease");
-
-    affectedRect
-      .on("mousemove", (event) => {
-        tooltip
-          .style("left", event.pageX - 80 + "px")
-          .style("top", event.pageY - 50 + "px")
-          .style("opacity", 1)
-          .html(
-            `<strong>Total Population:</strong> ${Intl.NumberFormat().format(total)}<br/>
-             <strong>Affected:</strong> ${Intl.NumberFormat().format(affected)}<br/>
-             <strong>Fatalities:</strong> ${fatalityText}<br/>
-             <strong>Shock Wave:</strong> ${shockText}`
-          );
-      })
-      .on("mouseleave", () => tooltip.style("opacity", 0));
-
-    // Labels
-    g.append("text")
-      .attr("x", 0)
-      .attr("y", -10)
-      .attr("fill", "#2D3748")
-      .attr("font-size", "16px")
-      .attr("font-weight", "600")
-      .text("Population Impact Overview");
-
-    g.append("text")
-      .attr("x", barWidth * percent + 10)
-      .attr("y", barHeight / 2 + 5)
-      .attr("fill", "#E53E3E")
-      .attr("font-size", "18px")
-      .attr("font-weight", "bold")
-      .text(`${(percent * 100).toFixed(1)}% affected`);
-
-    g.append("text")
-      .attr("x", 0)
-      .attr("y", barHeight + 25)
-      .attr("fill", "#4A5568")
-      .attr("font-size", "13px")
-      .text(
-        `Total: ${Intl.NumberFormat().format(total)} | Affected: ${Intl.NumberFormat().format(affected)}`
-      );
-  }, []);
+  const colorByType = (t = "") =>
+    t.toLowerCase() === "tsunami"
+      ? "#3182CE"
+      : t.toLowerCase() === "earthquake"
+      ? "#E53E3E"
+      : "#805AD5";
 
   return (
     <Box p={10}>
       <Heading textAlign="center" mb={2}>
-        🌎 Impact Zone Visualization
+        🌎 Nearby Impact Zone Visualization
       </Heading>
       <Text textAlign="center" color="gray.600" mb={8}>
-        Visualizing recent impact events with dynamic scaling and disaster flags.
+        Live visualization of nearby earthquakes and tsunami zones detected around your selected asteroid’s impact location.
       </Text>
 
-      {/* Map (left) + D3 Globe (right) */}
-      <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={8} alignItems="start">
-        <Box>
-          <ImpactZoneMap
-            zones={usgsZones}                // pass raw USGS-style objects
-            tsunami={hasTsunami}
-            earthquake={hasEarthquake}
-            colorByType={colorByType}        // keep palette consistent
-          />
+      {(loading || impactLoading) ? (
+        <Box textAlign="center" my={10}>
+          <Spinner size="xl" color="blue.400" thickness="4px" speed="0.7s" />
+          <Text mt={3} color="gray.400" fontSize="lg">
+            Analyzing asteroid impact patterns...
+          </Text>
         </Box>
+      ) : zones.length === 0 ? (
+        <Text textAlign="center" color="gray.500" my={6}>
+          No nearby earthquake or tsunami data found.
+        </Text>
+      ) : (
+        <>
+          {/* Map + Globe */}
+          <SimpleGrid columns={{ base: 1, lg: 2 }} spacing={8} alignItems="start">
+            <Box>
+              <ImpactZoneMap zones={zones} colorByType={colorByType} />
+            </Box>
 
-        <Box>
-          <GlobeD3 zones={globeZones} colorByType={colorByType} />
-        </Box>
-      </SimpleGrid>
+            <Box>
+              <GlobeD3 zones={globeZones} colorByType={colorByType} />
+            </Box>
+          </SimpleGrid>
 
-      {/* --- D3 Population Impact Visualization --- */}
-      <Box mt={12} ref={populationRef}>
-        <Heading size="md" textAlign="center" mb={4}>
-          🧍 Interactive Population Impact Visualization
-        </Heading>
-        <Box
-          display="flex"
-          justifyContent="center"
-          alignItems="center"
-          mt={4}
-        >
-          <svg
-            ref={popSvgRef}
-            width="380"
-            height="380"
-            role="img"
-            aria-label="Population Impact D3 visualization"
-          ></svg>
-        </Box>
-      </Box>
+          {impactData && (
+            <Box
+              mt={12}
+              bg="rgba(17, 24, 39, 0.8)"
+              p={8}
+              borderRadius="2xl"
+              boxShadow="0 0 30px rgba(255,255,255,0.05)"
+              color="whiteAlpha.900"
+              backdropFilter="blur(12px)"
+            >
+              <Heading size="md" mb={4} color="whiteAlpha.900" textAlign="center" letterSpacing="wide">
+                🌍 Population Impact Overview
+              </Heading>
+
+              <SimpleGrid columns={{ base: 1, md: 3 }} spacing={6}>
+                <Box
+                  textAlign="center"
+                  bg="rgba(31, 41, 55, 0.9)"
+                  borderRadius="xl"
+                  p={6}
+                  border="1px solid rgba(255,255,255,0.1)"
+                  boxShadow="0 0 25px rgba(0,0,0,0.4)"
+                  transition="transform 0.3s ease"
+                  _hover={{ transform: "translateY(-6px)", boxShadow: "0 0 35px rgba(99,102,241,0.3)" }}
+                >
+                  <Text fontSize="lg" fontWeight="semibold" color="green.300">
+                    Estimated Population Saved
+                  </Text>
+                  <Text fontSize="2xl" fontWeight="bold" mt={2} color="white">
+                    {Math.round(
+                      impactData.total_population - impactData.impact_effects.estimated_population_effect
+                    ).toLocaleString()}
+                  </Text>
+                </Box>
+
+                <Box
+                  textAlign="center"
+                  bg="rgba(31, 41, 55, 0.9)"
+                  borderRadius="xl"
+                  p={6}
+                  border="1px solid rgba(255,255,255,0.1)"
+                  boxShadow="0 0 25px rgba(0,0,0,0.4)"
+                  transition="transform 0.3s ease"
+                  _hover={{ transform: "translateY(-6px)", boxShadow: "0 0 35px rgba(99,102,241,0.3)" }}
+                >
+                  <Text fontSize="lg" fontWeight="semibold" color="red.300">
+                    Fatalities
+                  </Text>
+                  <Text fontSize="2xl" fontWeight="bold" mt={2} color="white">
+                    {impactData.impact_effects.fatalities}
+                  </Text>
+                </Box>
+
+                <Box
+                  textAlign="center"
+                  bg="rgba(31, 41, 55, 0.9)"
+                  borderRadius="xl"
+                  p={6}
+                  border="1px solid rgba(255,255,255,0.1)"
+                  boxShadow="0 0 25px rgba(0,0,0,0.4)"
+                  transition="transform 0.3s ease"
+                  _hover={{ transform: "translateY(-6px)", boxShadow: "0 0 35px rgba(99,102,241,0.3)" }}
+                >
+                  <Text fontSize="lg" fontWeight="semibold" color="orange.300">
+                    Shock Wave Impact
+                  </Text>
+                  <Text fontSize="md" fontWeight="medium" mt={2} color="white">
+                    {impactData.impact_effects.shock_wave}
+                  </Text>
+                </Box>
+              </SimpleGrid>
+
+              <Box mt={10}>
+                <Heading size="sm" mb={3} color="whiteAlpha.900" letterSpacing="wide">
+                  📊 Total Population vs Impacted Population
+                </Heading>
+                <Box height="220px" position="relative">
+                  <svg width="100%" height="220">
+                    <defs>
+                      <linearGradient id="gradImpact" x1="0" y1="0" x2="1" y2="0">
+                        <stop offset="0%" stopColor="#3B82F6" />
+                        <stop offset="100%" stopColor="#8B5CF6" />
+                      </linearGradient>
+                    </defs>
+                    <rect
+                      x="50"
+                      y="60"
+                      width="400"
+                      height="40"
+                      fill="rgba(255,255,255,0.1)"
+                      rx="10"
+                    />
+                    <rect
+                      x="50"
+                      y="60"
+                      width={
+                        (impactData.impact_effects.estimated_population_effect /
+                          impactData.total_population) *
+                        400
+                      }
+                      height="40"
+                      fill="url(#gradImpact)"
+                      rx="10"
+                    />
+                    <text
+                      x="50"
+                      y="120"
+                      fill="#CBD5E0"
+                      fontSize="14"
+                      fontWeight="600"
+                    >
+                      Total Population: {Math.round(impactData.total_population).toLocaleString()}
+                    </text>
+                    <text
+                      x="50"
+                      y="140"
+                      fill="#90CDF4"
+                      fontSize="14"
+                      fontWeight="600"
+                    >
+                      Saved: {Math.round(
+                        impactData.total_population - impactData.impact_effects.estimated_population_effect
+                      ).toLocaleString()} ({(
+                        ((impactData.total_population - impactData.impact_effects.estimated_population_effect) /
+                          impactData.total_population) *
+                        100
+                      ).toFixed(2)}%)
+                    </text>
+                  </svg>
+                </Box>
+              </Box>
+            </Box>
+          )}
+        </>
+      )}
     </Box>
   );
 }

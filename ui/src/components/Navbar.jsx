@@ -26,7 +26,7 @@ export default function Navbar() {
             borderRadius="full"
           />
           <Text fontSize="lg" fontWeight="semibold" letterSpacing="wider">
-            AstroShield
+            NudgeLab
           </Text>
         </Flex>
 
