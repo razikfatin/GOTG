@@ -1,13 +1,7 @@
 import { useState } from "react"
 import { Button, Popover, Portal } from "@chakra-ui/react"
 
-const sampleAsteroids = [
-  { id: "1", name: "Ceres" },
-  { id: "2", name: "Pallas" },
-  { id: "3", name: "Vesta" },
-]
-
-const AsteroidDropdown = ({ asteroids = sampleAsteroids, onSelectAsteroid }) => {
+const AsteroidDropdown = ({ asteroids = [], onSelectAsteroid }) => {
   const [selectedAsteroid, setSelectedAsteroid] = useState(null)
 
   const handleSelect = (asteroid) => {
