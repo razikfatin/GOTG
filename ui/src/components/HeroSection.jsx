@@ -46,7 +46,7 @@ export default function HeroSection() {
           <HStack spacing={6} pt={2}>
             <Button
               as={Link}
-              href="/simulate"
+              href="/mitigation"
               size="lg"
               px={8}
               py={6}

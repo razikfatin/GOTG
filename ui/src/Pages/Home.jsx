@@ -9,7 +9,6 @@ import FinalCTA from "../components/FinalCTA";
 export default function Home() {
   return (
     <div className="bg-black min-h-screen overflow-x-hidden">
-      // in Home page
       <Starfield density={0.00045} speed={10} enableMotion />
       <NebulaOverlay />
       <Navbar />

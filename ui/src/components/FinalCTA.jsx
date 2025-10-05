@@ -1,10 +1,13 @@
 // src/components/FinalCTA.jsx
 import { Box, Container, Heading, VStack, Button, Text } from "@chakra-ui/react";
 import { motion } from "framer-motion";
+import { useNavigate } from "react-router-dom";
 
 const MotionBox = motion(Box);
 
 export default function FinalCTA() {
+  const navigate = useNavigate();
+
   return (
     <Box
       as="section"
@@ -47,7 +50,7 @@ export default function FinalCTA() {
               boxShadow: "0 12px 40px rgba(59,130,246,0.65)",
             }}
             transition="all 0.3s ease"
-            onClick={() => (window.location.href = "/simulate")} // 🔗 navigate
+            onClick={() => navigate("/mitigation")}
           >
             Simulate
           </Button>

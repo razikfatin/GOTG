@@ -1,7 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import * as d3 from "d3";
 
-export default function ImpactZoneD3() {
+export default function ImpactZoneMap({ zones = [], tsunami = false, earthquake = false }) {
   const svgRef = useRef();
 
   useEffect(() => {
@@ -15,7 +15,7 @@ export default function ImpactZoneD3() {
 
     // Projection
     const projection = d3.geoMercator()
-      .center([0, 20]) // longitude, latitude
+      .center([0, 20])
       .scale(width / 6)
       .translate([width / 2, height / 2]);
 
@@ -33,43 +33,42 @@ export default function ImpactZoneD3() {
           .attr("stroke", "#777")
           .attr("stroke-width", 0.5);
 
-        // Impact point
-        const impact = { lat: 53.3498, lon: -6.2603 };
-
-        // radii in km
-        const severeKm = 200;
-        const moderateKm = 500;
-        const lightKm = 1000;
-
+        // Draw impact zones dynamically
         const makeCircle = (lat, lon, radiusKm) =>
           d3.geoCircle()
             .center([lon, lat])
-            .radius(radiusKm / 111)(); // km → degrees approx
+            .radius(radiusKm / 111)();
 
-        const zones = [
-          { data: makeCircle(impact.lat, impact.lon, severeKm), color: "red" },
-          { data: makeCircle(impact.lat, impact.lon, moderateKm), color: "orange" },
-          { data: makeCircle(impact.lat, impact.lon, lightKm), color: "green" },
-        ];
+        const zoneData = zones.map(zone => {
+          const color =
+            zone.type === "tsunami"
+              ? "blue"
+              : zone.type === "earthquake"
+              ? "red"
+              : "gray";
+          return { data: makeCircle(zone.latitude, zone.longitude, zone.scale * 50), color };
+        });
 
         svg.append("g")
           .selectAll("path.zone")
-          .data(zones)
+          .data(zoneData)
           .join("path")
           .attr("class", "zone")
           .attr("d", d => path(d.data))
           .attr("fill", d => d.color)
-          .attr("opacity", 0.3);
+          .attr("opacity", 0.4);
 
-        // Draw impact point
-        const [x, y] = projection([impact.lon, impact.lat]);
-        svg.append("circle")
-          .attr("cx", x)
-          .attr("cy", y)
-          .attr("r", 5)
-          .attr("fill", "black");
+        // Draw impact points
+        zones.forEach(zone => {
+          const [x, y] = projection([zone.longitude, zone.latitude]);
+          svg.append("circle")
+            .attr("cx", x)
+            .attr("cy", y)
+            .attr("r", 5)
+            .attr("fill", zone.type === "tsunami" ? "blue" : zone.type === "earthquake" ? "red" : "black");
+        });
       });
-  }, []);
+  }, [zones, tsunami, earthquake]);
 
   return <svg ref={svgRef}></svg>;
 }
