@@ -199,53 +199,6 @@ function AsteroidCard({ a }) {
   );
 }
 
-// Map various API shapes to the card shape we render
-function mapApiToCards(data) {
-  // NASA NEO feed often returns { near_earth_objects: { 'YYYY-MM-DD': [ ... ] } }
-  let list = [];
-  if (Array.isArray(data)) {
-    list = data;
-  } else if (Array.isArray(data?.near_earth_objects)) {
-    list = data.near_earth_objects;
-  } else if (data?.near_earth_objects && typeof data.near_earth_objects === "object") {
-    list = Object.values(data.near_earth_objects).flat();
-  }
-
-  return list.slice(0, 9).map((o, idx) => {
-    const ca = o?.close_approach_data?.[0] || {};
-    const vel = ca?.relative_velocity?.kilometers_per_second;
-    const missAU = ca?.miss_distance?.astronomical;
-    const diaMax =
-      o?.estimated_diameter?.meters?.estimated_diameter_max ??
-      o?.estimated_diameter?.meters?.max ??
-      null;
-
-    // Risk heuristic
-    let risk = "Low";
-    if (o?.is_potentially_hazardous_asteroid) risk = "High";
-    else if (diaMax != null && diaMax >= 150) risk = "Medium";
-
-    return {
-      id: o?.id || o?.neo_reference_id || `neo-${idx}`,
-      name: o?.name || `NEO-${(o?.id || idx).toString().slice(-4)}`,
-      description:
-        o?.orbital_data?.orbit_class?.orbit_class_description || "",
-      eta:
-        ca?.close_approach_date_full ||
-        ca?.close_approach_date ||
-        "—",
-      mag: o?.absolute_magnitude_h,
-      diameter: diaMax != null ? `${Math.round(diaMax)} m` : "—",
-      velocity: vel != null ? `${Number(vel).toFixed(1)} km/s` : "—",
-      approachDistance: missAU != null ? `${Number(missAU).toFixed(3)} AU` : "—",
-      energy: "—",
-      consequence: "",
-      risk,
-      img: o?.image_url || "", // if your API provides one; else fallback SVG is used
-    };
-  });
-}
-
 function CardSkeleton() {
   return (
     <Box
@@ -288,8 +241,7 @@ export default function AsteroidsSection() {
       try {
         const data = await ApiService.get("neo");
         if (!alive) return;
-        const cards = mapApiToCards(data);
-        setAsteroids(cards);
+        setAsteroids(data);
       } catch (err) {
         console.error("Error fetching asteroid data:", err);
         if (alive) setAsteroids([]);
@@ -333,10 +285,120 @@ export default function AsteroidsSection() {
             No asteroids found.
           </Box>
         ) : (
-          <SimpleGrid columns={{ base: 1, md: 3 }} spacing={{ base: 8, md: 10 }}>
-            {asteroids.map((a) => (
-              <AsteroidCard key={a.id || a.name} a={a} />
-            ))}
+          <SimpleGrid columns={{ base: 1, md: 2, lg: 3 }} spacing={{ base: 8, md: 10 }}>
+            {asteroids.map((a, index) => {
+              const approach = a.close_approach_data?.[0];
+              const risk =
+                a.is_potentially_hazardous_asteroid ? "High" : "Low";
+              const diameter = a.estimated_diameter?.meters;
+              const randomImage = [
+                "https://upload.wikimedia.org/wikipedia/commons/thumb/f/f9/Ceres_and_Vesta%2C_Moon_size_comparison.jpg/1920px-Ceres_and_Vesta%2C_Moon_size_comparison.jpg",
+                "https://as1.ftcdn.net/v2/jpg/03/92/71/06/1000_F_392710604_qYrnLYVWIfqSQwU4CylhjXoRE7FpPUf5.jpg",
+              ][index % 2];
+
+              return (
+                <MotionBox
+                  key={a.id || index}
+                  rounded="2xl"
+                  p="1px"
+                  bg="linear-gradient(135deg, rgba(255,255,255,0.15), rgba(255,255,255,0.04))"
+                  whileHover={{
+                    y: -6,
+                    scale: 1.02,
+                    boxShadow: "0 25px 80px rgba(0,0,0,0.55)",
+                  }}
+                  transition={{ duration: 0.25 }}
+                >
+                  <Box
+                    rounded="2xl"
+                    bg="rgba(17, 24, 39, 0.65)"
+                    border="1px solid"
+                    borderColor="whiteAlpha.200"
+                    backdropFilter="saturate(150%) blur(10px)"
+                    p={{ base: 5, md: 6 }}
+                    minH={{ base: "420px", md: "460px" }}
+                    color="white"
+                  >
+                    <VStack spacing={4} align="start">
+                      <Box
+                        w="100%"
+                        h="180px"
+                        overflow="hidden"
+                        rounded="lg"
+                        position="relative"
+                      >
+                        <Image
+                          src={randomImage}
+                          alt={a.name}
+                          objectFit="cover"
+                          w="100%"
+                          h="100%"
+                          transition="transform 0.5s ease"
+                          _groupHover={{ transform: "scale(1.05)" }}
+                        />
+                        <Badge
+                          position="absolute"
+                          top={3}
+                          right={3}
+                          colorScheme={risk === "High" ? "red" : "green"}
+                          px={3}
+                          py={1}
+                          rounded="md"
+                          fontWeight="bold"
+                        >
+                          {risk}
+                        </Badge>
+                      </Box>
+
+                      <VStack align="start" spacing={1}>
+                        <Text fontSize="xl" fontWeight="bold">
+                          {a.name}
+                        </Text>
+                        <Text fontSize="sm" color="whiteAlpha.700">
+                          {approach?.close_approach_date_full || "Unknown Date"}
+                        </Text>
+                      </VStack>
+
+                      <Box h="1px" bg="whiteAlpha.200" my={2} />
+
+                      <VStack align="stretch" spacing={2} fontSize="sm">
+                        <Fact
+                          label="Velocity (km/s)"
+                          value={approach?.relative_velocity?.kilometers_per_second}
+                        />
+                        <Fact
+                          label="Miss Distance (km)"
+                          value={Number(
+                            approach?.miss_distance?.kilometers
+                          ).toLocaleString()}
+                        />
+                        <Fact
+                          label="Diameter (m)"
+                          value={
+                            diameter
+                              ? `${diameter.estimated_diameter_min.toFixed(1)} - ${diameter.estimated_diameter_max.toFixed(1)}`
+                              : "N/A"
+                          }
+                        />
+                      </VStack>
+
+                      <Box
+                        mt={4}
+                        p={3}
+                        bg="whiteAlpha.100"
+                        rounded="lg"
+                        border="1px dashed"
+                        borderColor="whiteAlpha.300"
+                      >
+                        <Text fontSize="sm" color="whiteAlpha.900">
+                          Orbiting Body: {approach?.orbiting_body || "Earth"}
+                        </Text>
+                      </Box>
+                    </VStack>
+                  </Box>
+                </MotionBox>
+              );
+            })}
           </SimpleGrid>
         )}
       </Container>
