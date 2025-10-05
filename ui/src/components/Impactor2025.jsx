@@ -1,272 +1,218 @@
 // src/components/Impactor2025.jsx
-import {
-  Box,
-  Container,
-  GridItem,
-  Heading,
-  Text,
-  VStack,
-  HStack,
-  Badge,
-  Separator,
-  // Tooltip (v3 slot API)
-  TooltipRoot,
-  TooltipTrigger,
-  TooltipContent,
-  TooltipPositioner,
-} from "@chakra-ui/react";
-import { motion, useInView } from "framer-motion";
-import { useRef } from "react";
+import React from "react";
+import { Box, Text, Heading } from "@chakra-ui/react";
 
-const MBox = motion(Box);
-
-/* ---------- DisruptionGauge (visible scale + arrow needle) ---------- */
-/* ---------- DisruptionGauge (top semicircle + arrow needle, correct orientation) ---------- */
-function DisruptionGauge({
-  value = 7.2,
-  label = "Disruption Scale (0–10)",
-  width = 500,
-  height = 300,
+/** Fresh semicircle gauge (1–10) with a precise needle.
+ *  - Full colorful arc (green→yellow→red), like your reference
+ *  - Needle points to exact value on a 1..10 scale
+ *  - Pure SVG; no external chart libs; Chakra v3–safe
+ */
+function Gauge({
+  value,
+  min = 0,          // 0..10 scale
+  max = 10,
+  thickness = 26,
+  width = 360,
+  showTicks = false,
 }) {
-  const cx = width / 2;
-  const cy = height - 16;                  // baseline near bottom
-  const r = Math.min(width * 0.42, height * 0.9);
+  const W = width;
+  const H = Math.round(width * 0.5);
+  const cx = W / 2;
+  const cy = H - thickness / 2;                 // pivot slightly above bottom
+  const r  = Math.min(W / 2 - thickness / 2, H - thickness);
 
-  // Angles: 0..π from left to right (top semicircle)
-  const start = Math.PI;                   // 180° (left)
-  const end = 0;                           //   0° (right)
-  const v = Math.max(0, Math.min(10, value));
-  const t = v / 10;
-  const ang = start + (end - start) * t;
+  // clamp and map 0..10 → 180° (left to right)
+  const v = Math.max(min, Math.min(max, value));
+  const t = (v - min) / (max - min);
+  const A_START = Math.PI;                      // 180°
+  const A_END   = 0;                            //   0°
+  const angle   = A_START + (A_END - A_START) * t;
 
-  // IMPORTANT: SVG Y increases downward.
-  // Use cy - r*sin(a) so positive sine moves UP (not down).
-  const arc = (a0, a1, rr = r) => {
-    const x0 = cx + rr * Math.cos(a0), y0 = cy - rr * Math.sin(a0);
-    const x1 = cx + rr * Math.cos(a1), y1 = cy - rr * Math.sin(a1);
+  // IMPORTANT: flip the Y sign for SVG coordinates
+  const toXY = (ang, rr = r) => [cx + rr * Math.cos(ang), cy - rr * Math.sin(ang)];
+
+  const arcPath = (a0, a1) => {
+    const [x0, y0] = toXY(a0);
+    const [x1, y1] = toXY(a1);
     const largeArc = Math.abs(a1 - a0) > Math.PI ? 1 : 0;
-    return `M ${x0} ${y0} A ${rr} ${rr} 0 ${largeArc} 1 ${x1} ${y1}`;
-    // note the sweep-flag "1" so the arc follows the top path
+    return `M ${x0} ${y0} A ${r} ${r} 0 ${largeArc} 1 ${x1} ${y1}`;
   };
 
-  const markAngle = (mark) => start + (end - start) * (mark / 10);
-  const labelPos = (mark) => {
-    const a = markAngle(mark);
-    const rr = r + 22;                     // just outside the arc
-    return [cx + rr * Math.cos(a), cy - rr * Math.sin(a)];
-  };
+  const fullArc = arcPath(A_START, A_END);
+
+  // Needle geometry (blade + hub)
+  const needleLen = r - thickness * 0.35;
+  const [tipX, tipY]  = toXY(angle, needleLen);
+  const [tailX, tailY] = toXY(angle + Math.PI, 15);
+  const hubR = 8;
+
+  // Optional ticks (off by default)
+  const ticks = [];
+  if (showTicks) {
+    for (let i = min; i <= max; i++) {
+      const tt = (i - min) / (max - min);
+      const a = A_START + (A_END - A_START) * tt;
+      const major = i === min || i === (min + max) / 2 || i === max;
+      const outer = r + thickness / 2 + 4;
+      const inner = outer - (major ? 16 : 10);
+      const [ox, oy] = toXY(a, outer);
+      const [ix, iy] = toXY(a, inner);
+      ticks.push(
+        <line
+          key={i}
+          x1={ix}
+          y1={iy}
+          x2={ox}
+          y2={oy}
+          stroke={major ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.40)"}
+          strokeWidth={major ? 2 : 1}
+          strokeLinecap="round"
+        />
+      );
+    }
+  }
 
   return (
-    <Box position="relative">
-      <svg width="100%" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${label}: ${v}/10`}>
+    <Box w="100%" maxW={`${W}px`} userSelect="none">
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height="100%" role="img" aria-label="Gauge 0–10">
         <defs>
-          <linearGradient id="gauge-progress" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#22d3ee" />
-            <stop offset="100%" stopColor="#60a5fa" />
+          <linearGradient id="gaugeArc" x1="0" y1="0" x2="1" y2="0">
+            <stop offset="0%"   stopColor="#22c55e" />
+            <stop offset="50%"  stopColor="#eab308" />
+            <stop offset="100%" stopColor="#ef4444" />
           </linearGradient>
-          <marker id="arrow-head" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto">
-            <path d="M 0 0 L 10 5 L 0 10 z" fill="#ffffff" />
-          </marker>
+          <filter id="arcGlow" x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="b" />
+            <feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+          </filter>
         </defs>
 
-        {/* Segmented back scale */}
-        <path d={arc(start, markAngle(3.33))} stroke="rgba(34,197,94,0.5)" strokeWidth="18" fill="none" strokeLinecap="round" />
-        <path d={arc(markAngle(3.33), markAngle(6.66))} stroke="rgba(250,204,21,0.5)" strokeWidth="18" fill="none" strokeLinecap="round" />
-        <path d={arc(markAngle(6.66), end)} stroke="rgba(239,68,68,0.5)" strokeWidth="18" fill="none" strokeLinecap="round" />
+        {/* base + colored arc */}
+        <path d={fullArc} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={thickness} strokeLinecap="round" />
+        <path d={fullArc} fill="none" stroke="url(#gaugeArc)" strokeWidth={thickness} strokeLinecap="round" filter="url(#arcGlow)" />
 
-        {/* Ticks 0..10 */}
-        {Array.from({ length: 11 }).map((_, i) => {
-          const a = markAngle(i);
-          const inner = r - (i % 5 === 0 ? 28 : 22);
-          const outer = r + (i % 5 === 0 ? 6 : 0);
-          const x0 = cx + inner * Math.cos(a), y0 = cy - inner * Math.sin(a);
-          const x1 = cx + (r + outer) * Math.cos(a), y1 = cy - (r + outer) * Math.sin(a);
-          return (
-            <line key={i} x1={x0} y1={y0} x2={x1} y2={y1}
-              stroke="rgba(255,255,255,0.7)" strokeWidth={i % 5 === 0 ? 3 : 2} />
-          );
-        })}
+        {ticks}
 
-        {/* Numeric markers */}
-        {[0, 5, 10].map((m) => {
-          const [tx, ty] = labelPos(m);
-          return (
-            <text key={m} x={tx} y={ty} fill="rgba(255,255,255,0.85)" fontSize="14" textAnchor="middle" dominantBaseline="middle">
-              {m}
-            </text>
-          );
-        })}
-
-        {/* Progress overlay */}
-        <motion.path
-          d={arc(start, ang)}
-          stroke="url(#gauge-progress)"
-          strokeWidth="20"
-          fill="none"
-          strokeLinecap="round"
-          initial={{ pathLength: 0 }}
-          whileInView={{ pathLength: 1 }}
-          viewport={{ once: true }}
-          transition={{ duration: 1.2, ease: "easeOut" }}
-          style={{ filter: "drop-shadow(0 0 12px rgba(56,189,248,0.55))" }}
-        />
-
-        {/* Needle + arrowhead (points up toward arc) */}
-        <line
-          x1={cx} y1={cy}
-          x2={cx + (r - 44) * Math.cos(ang)}
-          y2={cy - (r - 44) * Math.sin(ang)}
-          stroke="#ffffff" strokeWidth="4" markerEnd="url(#arrow-head)"
-        />
-        <circle cx={cx} cy={cy} r="8" fill="#ffffff" />
-
-        {/* Value + label */}
-        <text x={cx} y={height - 70} fill="#fff" textAnchor="middle" fontSize="42" fontWeight="700">
-          {v.toFixed(1)}
-        </text>
-        <text x={cx} y={height - 32} fill="rgba(255,255,255,0.75)" textAnchor="middle" fontSize="14" style={{ letterSpacing: 1 }}>
-          {label}
-        </text>
+        {/* needle on top */}
+        <line x1={tailX} y1={tailY} x2={tipX} y2={tipY} stroke="white" strokeWidth="3" strokeLinecap="round" />
+        <circle cx={cx} cy={cy} r={hubR} fill="white" />
+        <circle cx={cx} cy={cy} r={hubR - 2} fill="black" />
       </svg>
     </Box>
   );
 }
 
 
-/* ---------- Param row helper (Tooltip v3) ---------- */
-function ParamRow({ label, value, help }) {
-  return (
-    <HStack justify="space-between" align="start">
-      <VStack align="start" spacing={0}>
-        <HStack spacing={2}>
-          <Text fontSize="sm" color="whiteAlpha.700">{label}</Text>
-
-          {help ? (
-            <TooltipRoot>
-              <TooltipTrigger>
-                <Box as="span" aria-label="info" cursor="help" color="whiteAlpha.600" _hover={{ color: "whiteAlpha.800" }} userSelect="none">
-                  ℹ︎
-                </Box>
-              </TooltipTrigger>
-              <TooltipPositioner>
-                <TooltipContent bg="blackAlpha.800" color="white" rounded="md" px={3} py={2} fontSize="sm">
-                  {help}
-                </TooltipContent>
-              </TooltipPositioner>
-            </TooltipRoot>
-          ) : null}
-        </HStack>
-
-        <Text fontSize="xl" fontWeight="semibold">{value}</Text>
-      </VStack>
-    </HStack>
-  );
-}
-
-/* ---------- Main section ---------- */
-export default function Impactor2025({
-  disruption = 7.2,
-  riskLevel = "High",
-  timeOfImpact = "2025-10-14 16:32 UTC",
-  speed = "21.4 km/s",
-  diameter = "310 m",
-  velocity = "77,000 km/h",
-}) {
-  const ref = useRef(null);
-  const inView = useInView(ref, { once: true, margin: "-15% 0px -15% 0px" });
-  const riskColor = riskLevel === "High" ? "red" : riskLevel === "Medium" ? "orange" : "green";
+export default function Impactor2025() {
+  const value = 7.2; // your live value goes here (1..10)
 
   return (
-    <Box as="section" color="white" py={{ base: 8, md: 10 }}>
-      <Container maxW="7xl" px={6}>
-        <MBox
-          ref={ref}
-          py={{ base: 12, md: 20 }}   // instead of full screen, just give padding
-          display="grid"
-          gridTemplateColumns={{ base: "1fr", md: "1.1fr 0.9fr" }}
-          gap={{ base: 8, md: 14 }}
-          alignItems="center"
-          initial={{ opacity: 0, y: 24 }}
-          animate={inView ? { opacity: 1, y: 0 } : {}}
-          transition={{ duration: 0.8 }}
-        >
+    <Box color="white" pt={6} pb={12} transform="translateY(-30px)">
+      {/* Match Navbar container spacing */}
+      <Box maxW="7xl" px={6} mx="auto">
+        {/* Header */}
+        <Box display="flex" alignItems="center" justifyContent="center" mb={6} gap="12px">
+          <Heading size="2xl" fontWeight="semibold" letterSpacing="wide" textAlign="center">
+            Impactor-2025
+          </Heading>
+          <Box
+            as="span"
+            px="10px"
+            py="2px"
+            borderRadius="9999px"
+            bg="whiteAlpha.200"
+            backdropFilter="blur(4px)"
+            fontSize="sm"
+            lineHeight="1.4"
+          >
+            High
+          </Box>
+        </Box>
 
-          {/* LEFT: Title + Gauge */}
-          <GridItem>
-            <VStack align="stretch" spacing={5}>
-              <HStack spacing={3}>
-                <Heading as="h2" size="lg" letterSpacing="wider">Impactor-2025</Heading>
-                <Badge colorScheme={riskColor} variant="solid" px={2} py={0.5} rounded="md">{riskLevel}</Badge>
-              </HStack>
+        {/* Two equal cards */}
+        <Box display="grid" gridTemplateColumns={{ base: "1fr", md: "1fr 1fr" }} gap="28px">
+          {/* Gauge card */}
+          <Box
+            bg="rgba(255,255,255,0.03)"
+            border="1px solid rgba(255,255,255,0.08)"
+            borderRadius="2xl"
+            p={6}
+            h="440px"
+            display="flex"
+            flexDir="column"
+            alignItems="center"
+            justifyContent="center"
+          >
+            <Gauge value={value} min={1} max={10} />
 
-              <Box
-                rounded="2xl"
-                p={{ base: 5, md: 7 }}
-                border="1px solid"
-                borderColor="whiteAlpha.200"
-                bg="blackAlpha.500"
-                backdropFilter="saturate(140%) blur(8px)"
-                boxShadow="0 10px 40px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.06)"
-              >
-                <DisruptionGauge value={disruption} />
-                <Text mt={3} color="whiteAlpha.700" fontSize="sm">
-                  Estimated planetary disruption index from current best-fit parameters.
-                </Text>
+            {/* Reading */}
+            <Text
+              fontSize="5xl"
+              fontWeight="extrabold"
+              lineHeight="1"
+              color="cyan.300"
+              mt="6px"
+              mb="6px"
+              letterSpacing="tight"
+            >
+              {value.toFixed(1)}
+            </Text>
+
+            {/* Title */}
+            <Text fontSize="md" fontWeight="medium" color="whiteAlpha.800" textAlign="center">
+              Disruption Scale (1–10)
+            </Text>
+            <Text fontSize="sm" color="whiteAlpha.600" mt={2} textAlign="center">
+              Estimated planetary disruption index from current best-fit parameters.
+            </Text>
+          </Box>
+
+          {/* Parameters card */}
+          <Box
+            bg="rgba(255,255,255,0.03)"
+            border="1px solid rgba(255,255,255,0.08)"
+            borderRadius="2xl"
+            p={6}
+            h="440px"
+            display="flex"
+            flexDir="column"
+            justifyContent="center"
+          >
+            <Heading size="sm" mb={4} color="whiteAlpha.900" fontWeight="semibold" letterSpacing="wide">
+              Current Parameters
+            </Heading>
+
+            <Box display="grid" rowGap="14px">
+              <Box display="flex" alignItems="center" justifyContent="space-between">
+                <Text color="whiteAlpha.700">Time of Impact</Text>
+                <Text fontWeight="bold" color="whiteAlpha.900">2025-10-14 16:32 UTC</Text>
               </Box>
-            </VStack>
-          </GridItem>
+              <Box h="1px" bg="whiteAlpha.200" />
 
-          {/* RIGHT: Stats */}
-          <GridItem>
-            <VStack align="stretch" spacing={5}>
-              <Heading as="h3" size="md" letterSpacing="wider">Current Parameters</Heading>
-
-              <Box
-                rounded="2xl"
-                p={{ base: 5, md: 6 }}
-                border="1px solid"
-                borderColor="whiteAlpha.200"
-                bg="blackAlpha.500"
-                backdropFilter="saturate(140%) blur(8px)"
-                boxShadow="0 10px 40px rgba(0,0,0,0.45), inset 0 0 0 1px rgba(255,255,255,0.06)"
-              >
-                <VStack align="stretch" spacing={4}>
-                  <ParamRow
-                    label="Time of Impact"
-                    value={timeOfImpact}
-                    help="Latest best-estimate window based on trajectory fit."
-                  />
-                  <Separator borderColor="whiteAlpha.200" />
-
-                  <ParamRow
-                    label="Speed at Entry"
-                    value={speed}
-                    help="Relative speed as it hits the atmosphere."
-                  />
-                  <Separator borderColor="whiteAlpha.200" />
-
-                  <ParamRow
-                    label="Estimated Diameter"
-                    value={diameter}
-                    help="Spheroidal equivalent from brightness & albedo."
-                  />
-                  <Separator borderColor="whiteAlpha.200" />
-
-                  <ParamRow
-                    label="Velocity (Ground)"
-                    value={velocity}
-                    help="Estimated ground-relative velocity after atmospheric losses."
-                  />
-                </VStack>
+              <Box display="flex" alignItems="center" justifyContent="space-between">
+                <Text color="whiteAlpha.700">Speed at Entry</Text>
+                <Text fontWeight="bold" color="whiteAlpha.900">21.4 km/s</Text>
               </Box>
+              <Box h="1px" bg="whiteAlpha.200" />
 
-              <Text fontSize="xs" color="whiteAlpha.600">
-                *Demo values. Connect to NASA NEO + USGS pipelines for live data.
-              </Text>
-            </VStack>
-          </GridItem>
-        </MBox>
-      </Container>
+              <Box display="flex" alignItems="center" justifyContent="space-between">
+                <Text color="whiteAlpha.700">Estimated Diameter</Text>
+                <Text fontWeight="bold" color="whiteAlpha.900">310 m</Text>
+              </Box>
+              <Box h="1px" bg="whiteAlpha.200" />
+
+              <Box display="flex" alignItems="center" justifyContent="space-between">
+                <Text color="whiteAlpha.700">Velocity (Ground)</Text>
+                <Text fontWeight="bold" color="whiteAlpha.900">77,000 km/h</Text>
+              </Box>
+            </Box>
+
+            <Text fontSize="xs" color="whiteAlpha.500" mt={5} textAlign="center">
+              *Demo values. Connect to NASA NEO + USGS pipelines for live data.
+            </Text>
+          </Box>
+        </Box>
+      </Box>
     </Box>
   );
 }
